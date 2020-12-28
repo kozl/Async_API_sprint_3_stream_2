@@ -1,0 +1,11 @@
+version: "2.2"
+services:
+  backend:
+    container_name: backend
+    build:
+      context: ./
+    ports:
+      - 8888:8888
+    depends_on:
+      - es01
+      - redis
