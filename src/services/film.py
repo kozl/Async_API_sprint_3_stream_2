@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Optional, List
+from uuid import UUID
 
 from aioredis import Redis
 from elasticsearch import AsyncElasticsearch
@@ -18,7 +19,7 @@ class FilmService:
         self.elastic = elastic
 
     # get_by_id возвращает объект фильма. Он опционален, так как фильм может отсутствовать в базе
-    async def get_by_id(self, film_id: str) -> Optional[Film]:
+    async def get_by_id(self, film_id: UUID) -> Optional[Film]:
         film = await self._film_from_cache(film_id)
         if not film:
             film = await self._get_film_from_elastic(film_id)
@@ -33,7 +34,7 @@ class FilmService:
         film_ids = await self._list_film_ids_from_elastic()
         not_found = []
         result = []
-        for film_id in filmids:
+        for film_id in film_ids:
             film = await self._film_from_cache(film_id)
             if not film:
                 not_found.append(film_id)
@@ -47,25 +48,25 @@ class FilmService:
                 result.append(film)
         return result
 
-    async def _get_films_from_elastic(self, film_ids: List[str]) -> List[Film]:
+    async def _get_films_from_elastic(self, film_ids: List[UUID]) -> List[Film]:
         doc_ids = [{'_id': film_id} for film_id in film_ids]
         resp = await self.elastic.mget(index='movies', body={'docs': doc_ids})
         films = [Film(**doc['_source']) for doc in resp['docs']]
         return films
 
-    async def _get_film_from_elastic(self, film_id: str) -> Optional[Film]:
-        doc = await self.elastic.search('movies', film_id)
+    async def _get_film_from_elastic(self, film_id: UUID) -> Optional[Film]:
+        doc = await self.elastic.get('movies', film_id)
         return Film(**doc['_source'])
 
-    async def _list_film_ids_from_elastic(self) -> List[str]:
-        docs = await self.elastic.get(index='movies', params={"_source": False, "size": 1000})
-        ids = [doc['_id'] for doc in docs]
+    async def _list_film_ids_from_elastic(self) -> List[UUID]:
+        docs = await self.elastic.search(index='movies', params={"_source": False, "size": 1000})
+        ids = [doc['_id'] for doc in docs['hits']['hits']]
         return ids
 
-    async def _film_from_cache(self, film_id: str) -> Optional[Film]:
+    async def _film_from_cache(self, film_id: UUID) -> Optional[Film]:
         # Пытаемся получить данные о фильме из кеша, используя команду get
         # https://redis.io/commands/get
-        data = await self.redis.get(film_id)
+        data = await self.redis.get(str(film_id))
         if not data:
             return None
 
@@ -78,7 +79,7 @@ class FilmService:
         # Выставляем время жизни кеша — 5 минут
         # https://redis.io/commands/set
         # pydantic позволяет сериализовать модель в json
-        await self.redis.set(film.id, film.json(), expire=FILM_CACHE_EXPIRE_IN_SECONDS)
+        await self.redis.set(str(film.id), film.json(), expire=FILM_CACHE_EXPIRE_IN_SECONDS)
 
 
 @lru_cache()
