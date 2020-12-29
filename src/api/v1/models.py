@@ -3,6 +3,10 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+"""
+Здесь находятся модели, которые сериализются в ответ API
+"""
+
 
 class Genre(BaseModel):
     id: UUID

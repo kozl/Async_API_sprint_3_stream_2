@@ -5,7 +5,7 @@
 1. Поднимаем elasticsearch, redis и приложение
 
 ```bash
-docker-compose up -d --build
+docker-compose up -d --build -f docker-compose.yaml -f docker-compose-backend.yaml
 ```
 
 2. Создаём схему схемы для индексов *movies*, *genres* и *persons*

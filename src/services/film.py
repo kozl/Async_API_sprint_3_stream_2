@@ -38,6 +38,9 @@ class SortBy(BaseModel):
 
     @classmethod
     def from_param(cls, param: Optional[str]):
+        """
+        Парсит параметр, переданный в query и возвращает SortBy
+        """
         if param is None:
             return cls.construct(attr='imdb_rating', order=SortOrder.DESC)
         order = SortOrder.DESC
@@ -52,6 +55,9 @@ class FilterBy(BaseModel):
 
     @classmethod
     def from_query(cls, query: QueryParams):
+        """
+        Парсит набор query параметров и возвращает FilterBy
+        """
         for k in query.keys():
             if k.startswith('filter'):
                 m = re.match('filter\[(.+)\]=(.+)', k)
@@ -62,6 +68,9 @@ class FilterBy(BaseModel):
 
 
 def _build_query(filter_by: FilterBy) -> dict:
+    """
+    Формирует поисковый запрос для фильтрации по аттрибутам фильма
+    """
     path = 'actors'
     if filter_by.attr == FilterByAttr.GENRE.value:
         path = 'genres'
@@ -89,8 +98,10 @@ class FilmService:
         self.redis = redis
         self.elastic = elastic
 
-    # get_by_id возвращает объект фильма. Он опционален, так как фильм может отсутствовать в базе
     async def get_by_id(self, film_id: UUID) -> Optional[Film]:
+        """
+        Возвращает объект фильма. Он опционален, так как фильм может отсутствовать в базе
+        """
         film = await self._film_from_cache(film_id)
         if not film:
             film = await self._get_film_from_elastic(film_id)
@@ -100,8 +111,10 @@ class FilmService:
 
         return film
 
-    # list возвращает все фильмы
     async def list(self, sort_by: Optional[SortBy] = None, filter_by: Optional[FilterBy] = None) -> List[Film]:
+        """
+        Возвращает все фильмы
+        """
         film_ids = await self._list_film_ids_from_elastic(sort_by, filter_by)
         not_found = []
         result = []
@@ -120,16 +133,25 @@ class FilmService:
         return result
 
     async def _get_films_from_elastic(self, film_ids: List[UUID]) -> List[Film]:
+        """
+        Получает фильмы из elasticsearch по их id
+        """
         doc_ids = [{'_id': film_id} for film_id in film_ids]
         resp = await self.elastic.mget(index='movies', body={'docs': doc_ids})
         films = [Film(**doc['_source']) for doc in resp['docs']]
         return films
 
     async def _get_film_from_elastic(self, film_id: UUID) -> Optional[Film]:
+        """
+        Получает фильм из elasticsearch по id
+        """
         doc = await self.elastic.get('movies', film_id)
         return Film(**doc['_source'])
 
     async def _list_film_ids_from_elastic(self, sort_by: Optional[SortBy] = None, filter_by: Optional[FilterBy] = None) -> List[UUID]:
+        """
+        Возвращает список id фильмов из elasticsearch с учётом сортировки и фильтрации
+        """
         params = {"_source": False, "size": DEFAULT_LIST_SIZE}
         if sort_by:
             params.update({'sort': f'{sort_by.attr}:{sort_by.order.value}'})
@@ -141,21 +163,20 @@ class FilmService:
         return ids
 
     async def _film_from_cache(self, film_id: UUID) -> Optional[Film]:
-        # Пытаемся получить данные о фильме из кеша, используя команду get
-        # https://redis.io/commands/get
+        """
+        Отдаёт фильм из кеша по id
+        """
         data = await self.redis.get(str(film_id))
         if not data:
             return None
 
-        # pydantic предоставляет удобное API для создания объекта моделей из json
         film = Film.parse_raw(data)
         return film
 
     async def _put_film_to_cache(self, film: Film):
-        # Сохраняем данные о фильме, используя команду set
-        # Выставляем время жизни кеша — 5 минут
-        # https://redis.io/commands/set
-        # pydantic позволяет сериализовать модель в json
+        """
+        Сохраняет фильм в кеш
+        """
         await self.redis.set(str(film.id), film.json(), expire=FILM_CACHE_EXPIRE_IN_SECONDS)
 
 
