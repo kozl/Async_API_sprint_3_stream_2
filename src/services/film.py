@@ -1,19 +1,90 @@
+import re
 from functools import lru_cache
 from typing import Optional, List
 from uuid import UUID
+from enum import Enum
+from collections import defaultdict
 
 from aioredis import Redis
 from elasticsearch import AsyncElasticsearch
+from pydantic import BaseModel
+from starlette.datastructures import QueryParams
 from fastapi import Depends
+
 
 from db.elastic import get_elastic
 from db.redis import get_redis
 from models.film import Film
 
 FILM_CACHE_EXPIRE_IN_SECONDS = 60 * 5  # 5 минут
+DEFAULT_LIST_SIZE = 1000
+
+
+class SortOrder(Enum):
+    ASC = 'asc'
+    DESC = 'desc'
+
+
+class FilterByAttr(Enum):
+    GENRE = 'genre'
+    ACTOR = 'actor'
+    DIRECTOR = 'director'
+    WRITER = 'writer'
+
+
+class SortBy(BaseModel):
+    attr: str
+    order: SortOrder
+
+    @classmethod
+    def from_param(cls, param: Optional[str]):
+        if param is None:
+            return cls.construct(attr='imdb_rating', order=SortOrder.DESC)
+        order = SortOrder.DESC
+        if param.startswith('+'):
+            order = SortOrder.ASC
+        return cls.construct(attr=param[1:], order=order)
+
+
+class FilterBy(BaseModel):
+    attr: FilterByAttr
+    value: str
+
+    @classmethod
+    def from_query(cls, query: QueryParams):
+        for k in query.keys():
+            if k.startswith('filter'):
+                m = re.match('filter\[(.+)\]=(.+)', k)
+                if m is None:
+                    continue
+                return cls.construct(attr=m[1], value=m[2])
+        return None
+
+
+def _build_query(filter_by: FilterBy) -> dict:
+    path = 'actors'
+    if filter_by.attr == FilterByAttr.GENRE.value:
+        path = 'genres'
+    elif filter_by.attr == FilterByAttr.ACTOR.value:
+        path = 'actors'
+    elif filter_by.attr == FilterByAttr.DIRECTOR.value:
+        path = 'directors'
+    elif filter_by.attr == FilterByAttr.WRITER.value:
+        path = 'writers'
+    return {
+        'query': {
+            'nested': {
+                'path': path,
+                'query': {
+                    'match': {f'{path}.name': filter_by.value}
+                }
+            }
+        }
+    }
 
 
 class FilmService:
+
     def __init__(self, redis: Redis, elastic: AsyncElasticsearch):
         self.redis = redis
         self.elastic = elastic
@@ -30,8 +101,8 @@ class FilmService:
         return film
 
     # list возвращает все фильмы
-    async def list(self) -> List[Film]:
-        film_ids = await self._list_film_ids_from_elastic()
+    async def list(self, sort_by: Optional[SortBy] = None, filter_by: Optional[FilterBy] = None) -> List[Film]:
+        film_ids = await self._list_film_ids_from_elastic(sort_by, filter_by)
         not_found = []
         result = []
         for film_id in film_ids:
@@ -58,8 +129,14 @@ class FilmService:
         doc = await self.elastic.get('movies', film_id)
         return Film(**doc['_source'])
 
-    async def _list_film_ids_from_elastic(self) -> List[UUID]:
-        docs = await self.elastic.search(index='movies', params={"_source": False, "size": 1000})
+    async def _list_film_ids_from_elastic(self, sort_by: Optional[SortBy] = None, filter_by: Optional[FilterBy] = None) -> List[UUID]:
+        params = {"_source": False, "size": DEFAULT_LIST_SIZE}
+        if sort_by:
+            params.update({'sort': f'{sort_by.attr}:{sort_by.order.value}'})
+        body = None
+        if filter_by:
+            body = _build_query(filter_by)
+        docs = await self.elastic.search(index='movies', params=params, body=body)
         ids = [doc['_id'] for doc in docs['hits']['hits']]
         return ids
 

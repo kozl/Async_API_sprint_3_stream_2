@@ -1,11 +1,11 @@
 from http import HTTPStatus
 from uuid import UUID
-from typing import List, Tuple
+from typing import List, Optional
 from enum import Enum
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from services.film import FilmService, get_film_service
+from services.film import FilmService, get_film_service, SortOrder, SortBy, FilterBy, FilterByAttr
 from api.v1.models import FilmShort, Film
 
 router = APIRouter()
@@ -29,15 +29,20 @@ async def film_details(film_id: UUID, film_service: FilmService = Depends(get_fi
 
 
 @router.get('/', response_model=List[FilmShort])
-async def films(film_service: FilmService = Depends(get_film_service),
-                filter_by_genre: Optional[str] = Query(None, rege))
-) -> List[FilmShort]:
-    films=await film_service.list()
-    if not films:
-        raise HTTPException(status_code = HTTPStatus.NOT_FOUND,
-                            detail = 'films not found')
+async def films(request: Request,
+                film_service: FilmService = Depends(get_film_service),
+                sort: Optional[str] = Query(
+                    None, description='Сортировка по аттрибуту фильма', regex='^[-+].+$'),
+                ) -> List[FilmShort]:
+    sort_by = SortBy.from_param(sort)
+    filter_by = FilterBy.from_query(request.query_params)
 
-    response=[]
+    films = await film_service.list(sort_by, filter_by)
+    if not films:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+                            detail='films not found')
+
+    response = []
     for film in films:
         response.append(
             FilmShort(id=film.id,
