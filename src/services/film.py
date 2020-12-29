@@ -85,7 +85,7 @@ def _build_query(filter_by: FilterBy) -> dict:
             'nested': {
                 'path': path,
                 'query': {
-                    'match': {f'{path}.name': filter_by.value}
+                    'match': {f'{path}.id': filter_by.value}
                 }
             }
         }
