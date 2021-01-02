@@ -58,12 +58,12 @@ class FilterBy(BaseModel):
         """
         Парсит набор query параметров и возвращает FilterBy
         """
-        for k in query.keys():
+        for k, v in query.items():
             if k.startswith('filter'):
-                m = re.match('filter\[(.+)\]=(.+)', k)
+                m = re.match('filter\[(.+)\]', k)
                 if m is None:
                     continue
-                return cls.construct(attr=m[1], value=m[2])
+                return cls.construct(attr=m[1], value=v)
         return None
 
 
@@ -134,7 +134,7 @@ class FilmService:
 
     async def _get_films_from_elastic(self, film_ids: List[UUID]) -> List[Film]:
         """
-        Получает фильмы из elasticsearch по их id
+        Получает фильмы из elasticsearch по списку id
         """
         doc_ids = [{'_id': film_id} for film_id in film_ids]
         resp = await self.elastic.mget(index='movies', body={'docs': doc_ids})
