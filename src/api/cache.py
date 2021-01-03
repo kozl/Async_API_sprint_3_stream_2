@@ -1,10 +1,8 @@
 from functools import wraps
 from typing import Optional, List
-from collections.abc import Iterable
 import json
 
-from fastapi import Depends, Request
-from aioredis import Redis
+from fastapi import Request
 
 from db.redis import get_redis
 
@@ -14,8 +12,9 @@ DEFAULT_TTL = 60
 def build_key(func, query_args, *args, **kwargs) -> str:
     """
     Формирует ключ для хранения данных в кеше.
-    Если среди параметров функции есть объъект Response, использует
-    query_args для формирования ключа (для функций, которые используют Response для получения параметров запроса)
+    Если среди параметров функции есть объект Response, использует
+    query_args для формирования ключа (для функций, которые используют
+    Response для получения параметров запроса)
     """
     kwargs_key = {k: v for k, v in kwargs.items() if k in query_args}
     for k, v in kwargs.items():
