@@ -42,3 +42,6 @@ class Film(FilmShort):
     # actors: List[Actor]
     # writers: List[Writer]
     # directors: List[Director]
+
+class FilmShortList(BaseModel):
+    __root__: List[FilmShort]

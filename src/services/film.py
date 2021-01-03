@@ -3,7 +3,6 @@ from functools import lru_cache
 from typing import Optional, List
 from uuid import UUID
 from enum import Enum
-from collections import defaultdict
 
 from aioredis import Redis
 from elasticsearch import AsyncElasticsearch
@@ -39,7 +38,8 @@ class SortBy(BaseModel):
     @classmethod
     def from_param(cls, param: Optional[str]):
         """
-        Парсит параметр, переданный в query и возвращает SortBy
+        Парсит параметр, переданный в query и возвращает SortBy.
+        По-умолчанию сортирует по рейтингу в порядке убывания.
         """
         if param is None:
             return cls.construct(attr='imdb_rating', order=SortOrder.DESC)
@@ -56,14 +56,13 @@ class FilterBy(BaseModel):
     @classmethod
     def from_query(cls, query: QueryParams):
         """
-        Парсит набор query параметров и возвращает FilterBy
+        Парсит набор query параметров и возвращает FilterBy либо None.
         """
-        for k in query.keys():
+        for k, v in query.items():
             if k.startswith('filter'):
-                m = re.match('filter\[(.+)\]=(.+)', k)
-                if m is None:
-                    continue
-                return cls.construct(attr=m[1], value=m[2])
+                match = re.match('filter\[(.+)\]', k)  # noqa: W605
+                if match:
+                    return cls.construct(attr=match[1], value=v)
         return None
 
 
@@ -100,7 +99,8 @@ class FilmService:
 
     async def get_by_id(self, film_id: UUID) -> Optional[Film]:
         """
-        Возвращает объект фильма. Он опционален, так как фильм может отсутствовать в базе
+        Возвращает объект фильма. Он опционален, так как
+        фильм может отсутствовать в базе
         """
         film = await self._film_from_cache(film_id)
         if not film:
@@ -111,7 +111,9 @@ class FilmService:
 
         return film
 
-    async def list(self, sort_by: Optional[SortBy] = None, filter_by: Optional[FilterBy] = None) -> List[Film]:
+    async def list(self,
+                   sort_by: Optional[SortBy] = None,
+                   filter_by: Optional[FilterBy] = None) -> List[Film]:
         """
         Возвращает все фильмы
         """
@@ -134,7 +136,7 @@ class FilmService:
 
     async def _get_films_from_elastic(self, film_ids: List[UUID]) -> List[Film]:
         """
-        Получает фильмы из elasticsearch по их id
+        Получает фильмы из elasticsearch по списку id
         """
         doc_ids = [{'_id': film_id} for film_id in film_ids]
         resp = await self.elastic.mget(index='movies', body={'docs': doc_ids})
@@ -148,7 +150,9 @@ class FilmService:
         doc = await self.elastic.get('movies', film_id)
         return Film(**doc['_source'])
 
-    async def _list_film_ids_from_elastic(self, sort_by: Optional[SortBy] = None, filter_by: Optional[FilterBy] = None) -> List[UUID]:
+    async def _list_film_ids_from_elastic(self,
+                                          sort_by: Optional[SortBy] = None,
+                                          filter_by: Optional[FilterBy] = None) -> List[UUID]:
         """
         Возвращает список id фильмов из elasticsearch с учётом сортировки и фильтрации
         """
