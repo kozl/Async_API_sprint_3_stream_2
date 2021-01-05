@@ -13,9 +13,23 @@ class Genre(BaseModel):
     name: str
 
 
-class Person(BaseModel):
+class GenreList(BaseModel):
+    __root__: List[Genre]
+
+
+class PersonShort(BaseModel):
     id: UUID
-    full_name: str
+    name: str
+
+
+class Person(PersonShort):
+    actor: List[UUID]
+    writer: List[UUID]
+    director: List[UUID]
+
+
+class PersonList(BaseModel):
+    __root__: List[PersonShort]
 
 
 class Writer(Person):
@@ -42,6 +56,7 @@ class Film(FilmShort):
     # actors: List[Actor]
     # writers: List[Writer]
     # directors: List[Director]
+
 
 class FilmShortList(BaseModel):
     __root__: List[FilmShort]
