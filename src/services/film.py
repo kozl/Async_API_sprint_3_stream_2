@@ -16,7 +16,6 @@ from db.redis import get_redis
 from models.film import Film
 
 FILM_CACHE_EXPIRE_IN_SECONDS = 60 * 5  # 5 минут
-DEFAULT_LIST_SIZE = 1000
 
 
 class SortOrder(Enum):
@@ -112,12 +111,16 @@ class FilmService:
         return film
 
     async def list(self,
+                   page_number: int,
+                   page_size: int,
                    sort_by: Optional[SortBy] = None,
-                   filter_by: Optional[FilterBy] = None) -> List[Film]:
+                   filter_by: Optional[FilterBy] = None,) -> List[Film]:
         """
         Возвращает все фильмы
         """
-        film_ids = await self._list_film_ids_from_elastic(sort_by, filter_by)
+        limit = page_size
+        offset = page_size * (page_number - 1)
+        film_ids = await self._list_film_ids_from_elastic(offset, limit, sort_by, filter_by)
         not_found = []
         result = []
         for film_id in film_ids:
@@ -151,12 +154,14 @@ class FilmService:
         return Film(**doc['_source'])
 
     async def _list_film_ids_from_elastic(self,
+                                          offset: int,
+                                          limit: int,
                                           sort_by: Optional[SortBy] = None,
                                           filter_by: Optional[FilterBy] = None) -> List[UUID]:
         """
         Возвращает список id фильмов из elasticsearch с учётом сортировки и фильтрации
         """
-        params = {"_source": False, "size": DEFAULT_LIST_SIZE}
+        params = {"_source": False, "size": limit, "from": offset}
         if sort_by:
             params.update({'sort': f'{sort_by.attr}:{sort_by.order.value}'})
         body = None
