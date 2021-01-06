@@ -99,10 +99,10 @@ class BaseService:
         """
         entitie = await self._get_entitie_from_cache(entitie_id)
         if not entitie:
-            entitie = await self._get_entitie_from_elastic(entitie_id)
+            entitie = await self._get_entities_from_elastic([entitie_id, ])
             if not entitie:
                 return None
-            await self._put_entitie_to_cache(entitie)
+            await self._put_entitie_to_cache(entitie[0])
 
         return entitie
 
@@ -137,13 +137,6 @@ class BaseService:
         resp = await self.elastic.mget(index=self.index, body={'docs': doc_ids})
         entities = [self.model(**doc['_source']) for doc in resp['docs']]
         return entities
-
-    async def _get_entitie_from_elastic(self, entitie_id: UUID) -> Optional[BaseModel]:
-        """
-        Получает сущность из elasticsearch по id
-        """
-        doc = await self.elastic.get(self.index, entitie_id)
-        return self.model(**doc['_source'])
 
     async def _list_entitie_ids_from_elastic(self,
                                              sort_by: Optional[SortBy] = None,
