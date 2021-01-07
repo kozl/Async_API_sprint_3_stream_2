@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from services.genre import GenreService, get_genre_service
 from api.v1.models import Genre, GenreList
-from api.cache import cache_response
+from cache.redis import cache_response
 
 router = APIRouter()
 

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from services.person import PersonService, get_person_service
 from api.v1.models import Person, PersonList, PersonShort
-from api.cache import cache_response
+from cache.redis import cache_response
 
 router = APIRouter()
 
@@ -14,15 +14,15 @@ router = APIRouter()
 @router.get('/{person_id}', response_model=Person)
 @cache_response(ttl=60 * 5, query_args=['person_id'])
 async def person_details(person_id: UUID, person_service: PersonService = Depends(get_person_service)) -> Person:
-    person = await person_service.get_person_by_id(person_id)
+    person = await person_service.get_by_id(person_id)
     if not person:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
                             detail='person not found')
     return Person(id=person.id,
                   name=person.name,
-                  actor=person.actor,
-                  writer=person.writer,
-                  director=person.director
+                  actor=[],
+                  writer=[],
+                  director=[],
                   )
 
 

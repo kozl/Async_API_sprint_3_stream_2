@@ -1,15 +1,17 @@
-from functools import wraps
-from typing import Optional, List
 import json
+from uuid import UUID
+from functools import wraps
+from typing import Optional, List, Callable
 
 from fastapi import Request
+from aioredis import Redis
 
 from db.redis import get_redis
 
 DEFAULT_TTL = 60
 
 
-def build_key(func, query_args, *args, **kwargs) -> str:
+def default_response_keybuilder(func, query_args, *args, **kwargs) -> str:
     """
     Формирует ключ для хранения данных в кеше.
     Если среди параметров функции есть объект Response, использует
@@ -26,6 +28,7 @@ def build_key(func, query_args, *args, **kwargs) -> str:
 def cache_response(
     ttl: Optional[int] = DEFAULT_TTL,
     query_args: List[str] = [],
+    key_builder: Callable = default_response_keybuilder,
 ):
     """
     Декоратор для кеширования ответа метода API
@@ -40,7 +43,7 @@ def cache_response(
             nonlocal query_args
 
             redis = await get_redis()
-            cache_key = build_key(func, query_args, *args, **kwargs)
+            cache_key = key_builder(func, query_args, *args, **kwargs)
             resp = await redis.get(cache_key)
             if resp:
                 return json.loads(resp)
@@ -49,3 +52,25 @@ def cache_response(
             return ret
         return inner
     return wrapper
+
+
+class RedisCache():
+    """
+    Redis-кеш для объектов. Ничего не знает об их структуре,
+    просто сохраняет и возвращает дикты в редисе.
+    """
+
+    def __init__(self, redis: Redis, keybuilder: Callable[[UUID], str], ttl: int = DEFAULT_TTL):
+        self.redis = redis
+        self.keybuilder = keybuilder
+        self.ttl = ttl
+
+    async def get(self, obj_id: UUID) -> Optional[str]:
+        resp = await self.redis.get(self.keybuilder(obj_id))
+        if not resp:
+            return None
+
+        return resp
+
+    async def put(self, obj_id: UUID, data: str):
+        await self.redis.set(self.keybuilder(obj_id), data, expire=self.ttl)
