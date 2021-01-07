@@ -25,25 +25,6 @@ def persons_keybuilder(person_id: UUID) -> str:
     return f'person:{str(person_id)}'
 
 
-def _build_person_role_query(person_id: UUID) -> List:
-    result = []
-    for role in Roles:
-        result.append({})
-        result.append(
-            {
-                'query': {
-                    'nested': {
-                        'path': role.value,
-                        'query': {
-                            'match': {f'{role.value}.id': person_id}
-                        }
-                    }
-                }
-            })
-
-    return result
-
-
 class PersonService:
 
     def __init__(self, cache: RedisCache, elastic: AsyncElasticsearch):
@@ -107,24 +88,6 @@ class PersonService:
         docs = await self.elastic.search(index='persons', params=params)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
         return ids
-
-    # async def get_by_id(self, person_id: UUID):
-    #     roles = {}
-    #     init_person = (await self.get_by_id(entitie_id)).dict()
-    #     body = _build_person_role_query(entitie_id)
-    #     docs = await self.elastic.msearch(index='movies', body=body)
-
-    #     actor, writer, director = docs['responses']
-
-    #     roles['actor'] = [doc['_id'] for doc in actor['hits']['hits']]
-    #     roles['writer'] = [doc['_id'] for doc in writer['hits']['hits']]
-    #     roles['director'] = [doc['_id'] for doc in director['hits']['hits']]
-
-    #     init_person.update(roles)
-    #     person = Person(**init_person)
-    #     print(person)
-
-    #     return person
 
 
 @lru_cache()

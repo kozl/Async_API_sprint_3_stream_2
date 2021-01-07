@@ -1,6 +1,6 @@
 import re
 from functools import lru_cache
-from typing import Optional, List
+from typing import Optional, List, Dict
 from uuid import UUID
 from enum import Enum
 
@@ -17,6 +17,12 @@ from cache.redis import RedisCache
 from models.film import Film
 
 DEFAULT_LIST_SIZE = 1000
+
+
+class Roles(Enum):
+    ACTOR = 'actors'
+    DIRECTOR = 'directors'
+    WRITER = 'writers'
 
 
 class SortOrder(Enum):
@@ -70,7 +76,7 @@ def films_keybuilder(film_id: UUID) -> str:
     return f'film:{str(film_id)}'
 
 
-def _build_filter_query(filter_by: FilterBy) -> dict:
+def _build_filter_query(filter_by: FilterBy) -> Dict:
     """
     Формирует поисковый запрос для фильтрации по аттрибутам фильма
     """
@@ -93,6 +99,25 @@ def _build_filter_query(filter_by: FilterBy) -> dict:
             }
         }
     }
+
+
+def _build_person_role_query(person_id: UUID) -> List:
+    result = []
+    for role in Roles:
+        result.append({})
+        result.append(
+            {
+                'query': {
+                    'nested': {
+                        'path': role.value,
+                        'query': {
+                            'match': {f'{role.value}.id': person_id}
+                        }
+                    }
+                }
+            })
+
+    return result
 
 
 class FilmService:
@@ -142,6 +167,10 @@ class FilmService:
                 result.append(film)
         return result
 
+    async def get_by_person_id(self, person_id: UUID) -> Dict[Roles, List[UUID]]:
+        film_by_role = await self._es_get_by_person(person_id)
+        return film_by_role
+
     async def _es_get_by_ids(self, film_ids: List[UUID]) -> List[dict]:
         """
         Получает фильмы из elasticsearch по списку id
@@ -166,6 +195,23 @@ class FilmService:
         docs = await self.elastic.search(index='movies', params=params, body=body)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
         return ids
+
+    async def _es_get_by_person(self, person_id: UUID) -> Dict[Roles, List[UUID]]:
+        """
+        Возвращает список id фильмов из elasticsearch в которых участовала
+        указанная персона
+        """
+        body = _build_person_role_query(person_id)
+        docs = await self.elastic.msearch(index='movies', body=body)
+        actor, writer, director = docs['responses']
+        films = {}
+        films[Roles.ACTOR.value] = [UUID(doc['_id'])
+                                    for doc in actor['hits']['hits']]
+        films[Roles.WRITER.value] = [UUID(doc['_id'])
+                                     for doc in writer['hits']['hits']]
+        films[Roles.DIRECTOR.value] = [UUID(doc['_id'])
+                                       for doc in director['hits']['hits']]
+        return films
 
 
 @lru_cache()

@@ -3,6 +3,9 @@ from uuid import UUID
 
 import orjson
 
+from models.genre import Genre
+from models.person import Actor, Writer, Director
+
 # Используем pydantic для упрощения работы при перегонке данных из json в объекты
 from pydantic import BaseModel
 
@@ -21,10 +24,10 @@ class Film(BaseModel):
     directors_names: str
     actors_names: str
     writers_names: str
-    # genres: List[Genre]
-    # actors: List[Actor]
-    # writers: List[Writer]
-    # directors: List[Director]
+    genres: List[Genre]
+    actors: List[Actor]
+    writers: List[Writer]
+    directors: List[Director]
 
     class Config:
         # Заменяем стандартную работу с json на более быструю

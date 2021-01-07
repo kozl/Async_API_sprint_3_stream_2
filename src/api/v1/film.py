@@ -22,10 +22,10 @@ async def film_details(film_id: UUID, film_service: FilmService = Depends(get_fi
                 title=film.title,
                 description=film.description,
                 imdb_rating=film.imdb_rating,
-                # genre=film.genre,
-                # actors=film.actors,
-                # writers=film.writers,
-                # directors=film.directors,
+                genres=film.genres,
+                actors=film.actors,
+                writers=film.writers,
+                directors=film.directors,
                 )
 
 
