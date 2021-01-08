@@ -5,7 +5,8 @@ ENV REDIS_PORT=6379
 ENV ELASTIC_HOST=es01
 ENV ELASTIC_PORT=9200
 
-COPY src/ /src
-RUN pip3 install -U pip && pip3 install -r /src/requirements.txt
+COPY /src/requirements.txt /requirements.txt
+RUN pip3 install -U pip && pip3 install -r /requirements.txt
 
+COPY src/ /src
 CMD python3 /src/main.py

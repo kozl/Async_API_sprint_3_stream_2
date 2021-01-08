@@ -1,13 +1,12 @@
 from http import HTTPStatus
 from uuid import UUID
 from typing import List, Optional
-from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from services.film import FilmService, get_film_service, SortOrder, SortBy, FilterBy, FilterByAttr
+from services.film import FilmService, get_film_service, SortBy, FilterBy
 from api.v1.models import FilmShort, Film, FilmShortList
-from api.cache import cache_response
+from cache.redis import cache_response
 from api.v1.common import pagination
 
 router = APIRouter()
@@ -24,10 +23,10 @@ async def film_details(film_id: UUID, film_service: FilmService = Depends(get_fi
                 title=film.title,
                 description=film.description,
                 imdb_rating=film.imdb_rating,
-                # genre=film.genre,
-                # actors=film.actors,
-                # writers=film.writers,
-                # directors=film.directors,
+                genres=film.genres,
+                actors=film.actors,
+                writers=film.writers,
+                directors=film.directors,
                 )
 
 

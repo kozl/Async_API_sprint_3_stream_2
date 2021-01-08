@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from models.person import Actor, Writer, Director
+
 """
 Здесь находятся модели, которые сериализются в ответ API
 """
@@ -13,21 +15,23 @@ class Genre(BaseModel):
     name: str
 
 
-class Person(BaseModel):
+class GenreList(BaseModel):
+    __root__: List[Genre]
+
+
+class PersonShort(BaseModel):
     id: UUID
-    full_name: str
+    name: str
 
 
-class Writer(Person):
-    pass
+class Person(PersonShort):
+    actor: List[UUID]
+    writer: List[UUID]
+    director: List[UUID]
 
 
-class Actor(Person):
-    pass
-
-
-class Director(Person):
-    pass
+class PersonList(BaseModel):
+    __root__: List[PersonShort]
 
 
 class FilmShort(BaseModel):
@@ -38,10 +42,11 @@ class FilmShort(BaseModel):
 
 class Film(FilmShort):
     description: Optional[str]
-    # genre: List[Genre]
-    # actors: List[Actor]
-    # writers: List[Writer]
-    # directors: List[Director]
+    genres: List[Genre]
+    actors: List[Actor]
+    writers: List[Writer]
+    directors: List[Director]
+
 
 class FilmShortList(BaseModel):
     __root__: List[FilmShort]
