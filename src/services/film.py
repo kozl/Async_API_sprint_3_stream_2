@@ -27,6 +27,9 @@ class Roles(Enum):
     WRITER = 'writers'
 
 
+SORT_FIELDS = ['imdb_rating', ]
+
+
 class SortOrder(Enum):
     ASC = 'asc'
     DESC = 'desc'
@@ -54,6 +57,9 @@ class SortBy(BaseModel):
         order = SortOrder.DESC
         if param.startswith('+'):
             order = SortOrder.ASC
+        sort_field = param[1:]
+        if sort_field not in SORT_FIELDS:
+            return cls.construct(attr='imdb_rating', order=SortOrder.DESC)
         return cls.construct(attr=param[1:], order=order)
 
 
