@@ -146,13 +146,17 @@ class FilmService:
         return film
 
     async def list(self,
+                   page_number: int,
+                   page_size: int,
                    sort_by: Optional[SortBy] = None,
-                   filter_by: Optional[FilterBy] = None) -> List[Film]:
+                   filter_by: Optional[FilterBy] = None,) -> List[Film]:
         """
         Возвращает все фильмы.
         """
         # получаем только ID фильмов
-        film_ids = await self._es_get_all(sort_by, filter_by)
+        limit = page_size
+        offset = page_size * (page_number - 1)
+        film_ids = await self._es_get_all(offset, limit, sort_by, filter_by)
         # OrderedDict позволяет сохранить исходный порядок сортировки
         films = OrderedDict.fromkeys(film_ids, None)
 
@@ -187,12 +191,14 @@ class FilmService:
         return docs
 
     async def _es_get_all(self,
+                          offset: int,
+                          limit: int,
                           sort_by: Optional[SortBy] = None,
                           filter_by: Optional[FilterBy] = None) -> List[UUID]:
         """
         Возвращает список id фильмов из elasticsearch с учётом сортировки и фильтрации
         """
-        params = {"_source": False, "size": DEFAULT_LIST_SIZE}
+        params = {"_source": False, "size": limit, "from": offset}
         if sort_by:
             params.update({'sort': f'{sort_by.attr}:{sort_by.order.value}'})
         body = None

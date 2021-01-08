@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from services.film import FilmService, get_film_service, SortBy, FilterBy
 from api.v1.models import FilmShort, Film, FilmShortList
 from cache.redis import cache_response
+from api.v1.common import pagination
 
 router = APIRouter()
 
@@ -35,11 +36,13 @@ async def films(request: Request,
                 film_service: FilmService = Depends(get_film_service),
                 sort: Optional[str] = Query(
                     None, description='Сортировка по аттрибуту фильма', regex='^[-+].+$'),
-                ) -> List[FilmShort]:
+                pagination: dict = Depends(pagination)) -> List[FilmShort]:
     sort_by = SortBy.from_param(sort)
     filter_by = FilterBy.from_query(request.query_params)
+    page_number = pagination['pagenumber']
+    page_size = pagination['pagesize']
 
-    films = await film_service.list(sort_by, filter_by)
+    films = await film_service.list(page_number, page_size, sort_by, filter_by)
     if not films:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
                             detail='films not found')
