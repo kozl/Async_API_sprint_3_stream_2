@@ -1,4 +1,3 @@
-from typing import List
 from uuid import UUID
 
 import orjson
@@ -15,11 +14,20 @@ def orjson_dumps(v, *, default):
 class Person(BaseModel):
     id: UUID
     name: str
-    actor: List[UUID] = []
-    writer: List[UUID] = []
-    director: List[UUID] = []
 
     class Config:
         # Заменяем стандартную работу с json на более быструю
         json_loads = orjson.loads
         json_dumps = orjson_dumps
+
+
+class Actor(Person):
+    pass
+
+
+class Writer(Person):
+    pass
+
+
+class Director(Person):
+    pass

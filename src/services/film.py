@@ -1,8 +1,9 @@
 import re
 from functools import lru_cache
-from typing import Optional, List
+from typing import Optional, List, Dict
 from uuid import UUID
 from enum import Enum
+from collections import OrderedDict
 
 from aioredis import Redis
 from elasticsearch import AsyncElasticsearch
@@ -13,10 +14,17 @@ from fastapi import Depends
 
 from db.elastic import get_elastic
 from db.redis import get_redis
+from cache.redis import RedisCache
 from models.film import Film
 
-FILM_CACHE_EXPIRE_IN_SECONDS = 60 * 5  # 5 минут
 DEFAULT_LIST_SIZE = 1000
+FILMS_INDEX = 'movies'
+
+
+class Roles(Enum):
+    ACTOR = 'actors'
+    DIRECTOR = 'directors'
+    WRITER = 'writers'
 
 
 class SortOrder(Enum):
@@ -66,7 +74,11 @@ class FilterBy(BaseModel):
         return None
 
 
-def _build_query(filter_by: FilterBy) -> dict:
+def films_keybuilder(film_id: UUID) -> str:
+    return f'film:{str(film_id)}'
+
+
+def _build_filter_query(filter_by: FilterBy) -> Dict:
     """
     Формирует поисковый запрос для фильтрации по аттрибутам фильма
     """
@@ -91,10 +103,29 @@ def _build_query(filter_by: FilterBy) -> dict:
     }
 
 
+def _build_person_role_query(person_id: UUID) -> List:
+    result = []
+    for role in Roles:
+        result.append({})
+        result.append(
+            {
+                'query': {
+                    'nested': {
+                        'path': role.value,
+                        'query': {
+                            'match': {f'{role.value}.id': person_id}
+                        }
+                    }
+                }
+            })
+
+    return result
+
+
 class FilmService:
 
-    def __init__(self, redis: Redis, elastic: AsyncElasticsearch):
-        self.redis = redis
+    def __init__(self, cache: RedisCache, elastic: AsyncElasticsearch):
+        self.cache = cache
         self.elastic = elastic
 
     async def get_by_id(self, film_id: UUID) -> Optional[Film]:
@@ -102,12 +133,15 @@ class FilmService:
         Возвращает объект фильма. Он опционален, так как
         фильм может отсутствовать в базе
         """
-        film = await self._film_from_cache(film_id)
-        if not film:
-            film = await self._get_film_from_elastic(film_id)
-            if not film:
-                return None
-            await self._put_film_to_cache(film)
+        data = await self.cache.get(film_id)
+        if data:
+            return Film.parse_raw(data)
+
+        docs = await self._es_get_by_ids([film_id, ])
+        if not docs:
+            return None
+        film = Film(**docs[0])
+        await self.cache.put(film.id, film.json())
 
         return film
 
@@ -115,44 +149,46 @@ class FilmService:
                    sort_by: Optional[SortBy] = None,
                    filter_by: Optional[FilterBy] = None) -> List[Film]:
         """
-        Возвращает все фильмы
+        Возвращает все фильмы.
         """
-        film_ids = await self._list_film_ids_from_elastic(sort_by, filter_by)
-        not_found = []
-        result = []
-        for film_id in film_ids:
-            film = await self._film_from_cache(film_id)
-            if not film:
-                not_found.append(film_id)
-            else:
-                result.append(film)
-        # не найденные в кеше фильмы запрашиваем в эластике и кладём в кеш
-        if not_found:
-            films = await self._get_films_from_elastic(not_found)
-            for film in films:
-                await self._put_film_to_cache(film)
-                result.append(film)
-        return result
+        # получаем только ID фильмов
+        film_ids = await self._es_get_all(sort_by, filter_by)
+        # OrderedDict позволяет сохранить исходный порядок сортировки
+        films = OrderedDict.fromkeys(film_ids, None)
 
-    async def _get_films_from_elastic(self, film_ids: List[UUID]) -> List[Film]:
+        # проверяем есть ли полученные фильмы в кеше по их ID
+        for film_id in films.keys():
+            data = await self.cache.get(film_id)
+            if data:
+                films[film_id] = Film.parse_raw(data)
+
+        # не найденные в кеше фильмы запрашиваем в эластике и кладём в кеш
+        not_found = [film_id for film_id in films.keys()
+                     if films[film_id] is None]
+        if not_found:
+            docs = await self._es_get_by_ids(not_found)
+            for doc in docs:
+                film = Film(**doc)
+                await self.cache.put(film.id, film.json())
+                films[film.id] = film
+        return list(films.values())
+
+    async def get_by_person_id(self, person_id: UUID) -> Dict[Roles, List[UUID]]:
+        film_by_role = await self._es_get_by_person(person_id)
+        return film_by_role
+
+    async def _es_get_by_ids(self, film_ids: List[UUID]) -> List[dict]:
         """
         Получает фильмы из elasticsearch по списку id
         """
         doc_ids = [{'_id': film_id} for film_id in film_ids]
-        resp = await self.elastic.mget(index='movies', body={'docs': doc_ids})
-        films = [Film(**doc['_source']) for doc in resp['docs']]
-        return films
+        resp = await self.elastic.mget(index=FILMS_INDEX, body={'docs': doc_ids})
+        docs = [doc['_source'] for doc in resp['docs']]
+        return docs
 
-    async def _get_film_from_elastic(self, film_id: UUID) -> Optional[Film]:
-        """
-        Получает фильм из elasticsearch по id
-        """
-        doc = await self.elastic.get('movies', film_id)
-        return Film(**doc['_source'])
-
-    async def _list_film_ids_from_elastic(self,
-                                          sort_by: Optional[SortBy] = None,
-                                          filter_by: Optional[FilterBy] = None) -> List[UUID]:
+    async def _es_get_all(self,
+                          sort_by: Optional[SortBy] = None,
+                          filter_by: Optional[FilterBy] = None) -> List[UUID]:
         """
         Возвращает список id фильмов из elasticsearch с учётом сортировки и фильтрации
         """
@@ -161,27 +197,27 @@ class FilmService:
             params.update({'sort': f'{sort_by.attr}:{sort_by.order.value}'})
         body = None
         if filter_by:
-            body = _build_query(filter_by)
-        docs = await self.elastic.search(index='movies', params=params, body=body)
-        ids = [doc['_id'] for doc in docs['hits']['hits']]
+            body = _build_filter_query(filter_by)
+        docs = await self.elastic.search(index=FILMS_INDEX, params=params, body=body)
+        ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
         return ids
 
-    async def _film_from_cache(self, film_id: UUID) -> Optional[Film]:
+    async def _es_get_by_person(self, person_id: UUID) -> Dict[Roles, List[UUID]]:
         """
-        Отдаёт фильм из кеша по id
+        Возвращает список id фильмов из elasticsearch в которых участовала
+        указанная персона
         """
-        data = await self.redis.get(str(film_id))
-        if not data:
-            return None
-
-        film = Film.parse_raw(data)
-        return film
-
-    async def _put_film_to_cache(self, film: Film):
-        """
-        Сохраняет фильм в кеш
-        """
-        await self.redis.set(str(film.id), film.json(), expire=FILM_CACHE_EXPIRE_IN_SECONDS)
+        body = _build_person_role_query(person_id)
+        docs = await self.elastic.msearch(index=FILMS_INDEX, body=body)
+        actor, writer, director = docs['responses']
+        films = {}
+        films[Roles.ACTOR.value] = [UUID(doc['_id'])
+                                    for doc in actor['hits']['hits']]
+        films[Roles.WRITER.value] = [UUID(doc['_id'])
+                                     for doc in writer['hits']['hits']]
+        films[Roles.DIRECTOR.value] = [UUID(doc['_id'])
+                                       for doc in director['hits']['hits']]
+        return films
 
 
 @lru_cache()
@@ -189,4 +225,6 @@ def get_film_service(
         redis: Redis = Depends(get_redis),
         elastic: AsyncElasticsearch = Depends(get_elastic),
 ) -> FilmService:
-    return FilmService(redis, elastic)
+    return FilmService(RedisCache(redis=redis,
+                                  keybuilder=films_keybuilder),
+                       elastic)
