@@ -3,6 +3,7 @@ from functools import lru_cache
 from typing import Optional, List, Dict
 from uuid import UUID
 from enum import Enum
+from collections import OrderedDict
 
 from aioredis import Redis
 from elasticsearch import AsyncElasticsearch
@@ -17,6 +18,7 @@ from cache.redis import RedisCache
 from models.film import Film
 
 DEFAULT_LIST_SIZE = 1000
+FILMS_INDEX = 'movies'
 
 
 class Roles(Enum):
@@ -147,25 +149,29 @@ class FilmService:
                    sort_by: Optional[SortBy] = None,
                    filter_by: Optional[FilterBy] = None) -> List[Film]:
         """
-        Возвращает все фильмы
+        Возвращает все фильмы.
         """
+        # получаем только ID фильмов
         film_ids = await self._es_get_all(sort_by, filter_by)
-        not_found = []
-        result = []
-        for film_id in film_ids:
+        # OrderedDict позволяет сохранить исходный порядок сортировки
+        films = OrderedDict.fromkeys(film_ids, None)
+
+        # проверяем есть ли полученные фильмы в кеше по их ID
+        for film_id in films.keys():
             data = await self.cache.get(film_id)
-            if not data:
-                not_found.append(film_id)
-            else:
-                result.append(Film.parse_raw(data))
+            if data:
+                films[film_id] = Film.parse_raw(data)
+
         # не найденные в кеше фильмы запрашиваем в эластике и кладём в кеш
+        not_found = [film_id for film_id in films.keys()
+                     if films[film_id] is None]
         if not_found:
             docs = await self._es_get_by_ids(not_found)
             for doc in docs:
                 film = Film(**doc)
                 await self.cache.put(film.id, film.json())
-                result.append(film)
-        return result
+                films[film.id] = film
+        return list(films.values())
 
     async def get_by_person_id(self, person_id: UUID) -> Dict[Roles, List[UUID]]:
         film_by_role = await self._es_get_by_person(person_id)
@@ -176,7 +182,7 @@ class FilmService:
         Получает фильмы из elasticsearch по списку id
         """
         doc_ids = [{'_id': film_id} for film_id in film_ids]
-        resp = await self.elastic.mget(index='movies', body={'docs': doc_ids})
+        resp = await self.elastic.mget(index=FILMS_INDEX, body={'docs': doc_ids})
         docs = [doc['_source'] for doc in resp['docs']]
         return docs
 
@@ -192,7 +198,7 @@ class FilmService:
         body = None
         if filter_by:
             body = _build_filter_query(filter_by)
-        docs = await self.elastic.search(index='movies', params=params, body=body)
+        docs = await self.elastic.search(index=FILMS_INDEX, params=params, body=body)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
         return ids
 
@@ -202,7 +208,7 @@ class FilmService:
         указанная персона
         """
         body = _build_person_role_query(person_id)
-        docs = await self.elastic.msearch(index='movies', body=body)
+        docs = await self.elastic.msearch(index=FILMS_INDEX, body=body)
         actor, writer, director = docs['responses']
         films = {}
         films[Roles.ACTOR.value] = [UUID(doc['_id'])

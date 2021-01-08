@@ -54,7 +54,7 @@ def cache_response(
     return wrapper
 
 
-class RedisCache():
+class RedisCache:
     """
     Redis-кеш для объектов. Ничего не знает об их структуре,
     просто сохраняет и возвращает дикты в редисе.

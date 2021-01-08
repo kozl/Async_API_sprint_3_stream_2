@@ -1,6 +1,7 @@
 from functools import lru_cache
 from uuid import UUID
 from typing import Optional, List
+from collections import OrderedDict
 
 from aioredis import Redis
 from elasticsearch import AsyncElasticsearch
@@ -13,6 +14,7 @@ from cache.redis import RedisCache
 from models.genre import Genre
 
 DEFAULT_LIST_SIZE = 1000
+GENRES_INDEX = 'genres'
 
 
 def genres_keybuilder(genre_id: UUID) -> str:
@@ -43,30 +45,33 @@ class GenreService:
         """
         Возвращает все жанры
         """
+        # получаем только ID жанров
         genre_ids = await self._es_get_all()
-        not_found = []
-        result = []
-        for genre_id in genre_ids:
+        genres = OrderedDict.fromkeys(genre_ids, None)
+
+        # проверяем есть ли полученные жанры в кеше по их ID
+        for genre_id in genres.keys():
             data = await self.cache.get(genre_id)
-            if not data:
-                not_found.append(genre_id)
-            else:
-                result.append(Genre.parse_raw(data))
-        # не найденные в кеше фильмы запрашиваем в эластике и кладём в кеш
+            if data:
+                genres[genre_id] = Genre.parse_raw(data)
+
+        # не найденные в кеше жанры запрашиваем в эластике и кладём в кеш
+        not_found = [genre_id for genre_id in genres.keys()
+                     if genres[genre_id] is None]
         if not_found:
             docs = await self._es_get_by_ids(not_found)
             for doc in docs:
                 genre = Genre(**doc)
-                await self.cache.put(genre.id, genre.dict())
-                result.append(genre)
-        return result
+                await self.cache.put(genre.id, genre.json())
+                genres[genre.id] = genre
+        return list(genres.values())
 
     async def _es_get_by_ids(self, genre_ids: List[UUID]) -> List[dict]:
         """
         Получает фильмы из elasticsearch по списку id
         """
         doc_ids = [{'_id': genre_id} for genre_id in genre_ids]
-        resp = await self.elastic.mget(index='genres', body={'docs': doc_ids})
+        resp = await self.elastic.mget(index=GENRES_INDEX, body={'docs': doc_ids})
         docs = [doc['_source'] for doc in resp['docs']]
         return docs
 
@@ -75,7 +80,7 @@ class GenreService:
         Возвращает список id фильмов из elasticsearch с учётом сортировки и фильтрации
         """
         params = {"_source": False, "size": DEFAULT_LIST_SIZE}
-        docs = await self.elastic.search(index='genres', params=params)
+        docs = await self.elastic.search(index=GENRES_INDEX, params=params)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
         return ids
 

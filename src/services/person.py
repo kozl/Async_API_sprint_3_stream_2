@@ -2,6 +2,7 @@ from enum import Enum
 from uuid import UUID
 from typing import List, Optional
 from functools import lru_cache
+from collections import OrderedDict
 
 from fastapi import Depends
 from aioredis import Redis
@@ -13,6 +14,7 @@ from cache.redis import RedisCache
 from models.person import Person
 
 DEFAULT_LIST_SIZE = 1000
+PERSONS_INDEX = 'persons'
 
 
 class Roles(Enum):
@@ -35,23 +37,26 @@ class PersonService:
         """
         Возвращает все персоны
         """
+        # получаем только ID персон
         person_ids = await self._es_get_all()
-        not_found = []
-        result = []
-        for person_id in person_ids:
+        persons = OrderedDict.fromkeys(person_ids, None)
+
+        # проверяем есть ли полученные персоны в кеше по их ID
+        for person_id in persons.keys():
             data = await self.cache.get(person_id)
-            if not data:
-                not_found.append(person_id)
-            else:
-                result.append(Person.parse_raw(data))
-        # не найденные в кеше фильмы запрашиваем в эластике и кладём в кеш
+            if data:
+                persons[person_id] = Person.parse_raw(data)
+
+        # не найденные в кеше персоны запрашиваем в эластике и кладём в кеш
+        not_found = [person_id for person_id in persons.keys()
+                     if persons[person_id] is None]
         if not_found:
             docs = await self._es_get_by_ids(not_found)
             for doc in docs:
                 person = Person(**doc)
                 await self.cache.put(person.id, person.json())
-                result.append(person)
-        return result
+                persons[person.id] = person
+        return list(persons.values())
 
     async def get_by_id(self, person_id: UUID) -> Optional[Person]:
 
@@ -76,7 +81,7 @@ class PersonService:
         Получает персоны из elasticsearch по списку id
         """
         doc_ids = [{'_id': person_id} for person_id in person_ids]
-        resp = await self.elastic.mget(index='persons', body={'docs': doc_ids})
+        resp = await self.elastic.mget(index=PERSONS_INDEX, body={'docs': doc_ids})
         docs = [doc['_source'] for doc in resp['docs']]
         return docs
 
@@ -85,7 +90,7 @@ class PersonService:
         Возвращает список id персон из elasticsearch с учётом сортировки и фильтрации
         """
         params = {"_source": False, "size": DEFAULT_LIST_SIZE}
-        docs = await self.elastic.search(index='persons', params=params)
+        docs = await self.elastic.search(index=PERSONS_INDEX, params=params)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
         return ids
 
