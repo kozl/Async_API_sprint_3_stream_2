@@ -183,9 +183,36 @@ class FilmService:
                 films[film.id] = film
         return list(films.values())
 
-    async def get_by_person_id(self, person_id: UUID) -> Dict[Roles, List[UUID]]:
-        film_by_role = await self._es_get_by_person(person_id)
-        return film_by_role
+    async def get_by_person_id(self, person_id: UUID) -> Dict[Roles, List[Film]]:
+        """
+        Возвращает фильмы в которых участвовала персона
+        в разрезе по ролям
+        """
+        film_ids_by_role = await self._es_get_by_person(person_id)
+        films_by_role = {}
+        for role, film_ids in film_ids_by_role.items():
+            role_film_ids = OrderedDict.fromkeys(film_ids, None)
+            # ищем есть ли фильмы в кеше
+            for film_id in role_film_ids.keys():
+                data = await self.cache.get(film_id)
+                if data:
+                    role_film_ids[film_id] = Film.parse_raw(data)
+
+            not_found = [film_id for film_id in role_film_ids.keys()
+                         if role_film_ids[film_id] is None]
+
+            # если нет, запрашиваем их в эластике
+            if not_found:
+                docs = await self._es_get_by_ids(not_found)
+                for doc in docs:
+                    film = Film(**doc)
+                    await self.cache.put(film.id, film.json())
+                    role_film_ids[film.id] = film
+
+            # кладем список фильмов в результирующую структуру
+            films_by_role[role] = list(role_film_ids.values())
+
+        return films_by_role
 
     async def _es_get_by_ids(self, film_ids: List[UUID]) -> List[dict]:
         """
