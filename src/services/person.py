@@ -13,7 +13,6 @@ from db.redis import get_redis
 from cache.redis import RedisCache
 from models.person import Person
 
-DEFAULT_LIST_SIZE = 1000
 PERSONS_INDEX = 'persons'
 
 
@@ -33,12 +32,16 @@ class PersonService:
         self.cache = cache
         self.elastic = elastic
 
-    async def list(self) -> List[Person]:
+    async def list(self,
+                   page_number: int,
+                   page_size: int) -> List[Person]:
         """
         Возвращает все персоны
         """
         # получаем только ID персон
-        person_ids = await self._es_get_all()
+        limit = page_size
+        offset = page_size * (page_number - 1)
+        person_ids = await self._es_get_all(offset, limit)
         persons = OrderedDict.fromkeys(person_ids, None)
 
         # проверяем есть ли полученные персоны в кеше по их ID
@@ -85,20 +88,24 @@ class PersonService:
         docs = [doc['_source'] for doc in resp['docs']]
         return docs
 
-    async def _es_get_all(self) -> List[UUID]:
+    async def _es_get_all(self,
+                          offset: int,
+                          limit: int) -> List[UUID]:
         """
         Возвращает список id персон из elasticsearch с учётом сортировки и фильтрации
         """
-        params = {"_source": False, "size": DEFAULT_LIST_SIZE}
+        params = {"_source": False, "size": limit, "from": offset}
         docs = await self.elastic.search(index=PERSONS_INDEX, params=params)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
         return ids
 
 
-@lru_cache()
+@ lru_cache()
 def get_person_service(
         redis: Redis = Depends(get_redis),
         elastic: AsyncElasticsearch = Depends(get_elastic)
+
+
 ) -> PersonService:
     return PersonService(RedisCache(redis=redis,
                                     keybuilder=persons_keybuilder),

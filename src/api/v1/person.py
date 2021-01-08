@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from services.person import PersonService, get_person_service
 from services.film import FilmService, Roles, get_film_service
+from api.v1.common import pagination
 from api.v1.models import Person, PersonList, PersonShort
 from cache.redis import cache_response
 
@@ -35,8 +36,11 @@ async def person_details(person_id: UUID,
 @cache_response(ttl=60 * 5, query_args=['sort'])
 async def persons(request: Request,
                   person_service: PersonService = Depends(get_person_service),
-                  ) -> List[Person]:
-    persons = await person_service.list()
+                  pagination: dict = Depends(pagination)) -> List[Person]:
+    page_number = pagination['pagenumber']
+    page_size = pagination['pagesize']
+
+    persons = await person_service.list(page_number, page_size)
     if not persons:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
                             detail='persons not found')
