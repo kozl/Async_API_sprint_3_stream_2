@@ -10,13 +10,19 @@ from models.person import Actor, Writer, Director
 """
 
 
+class PaginatedList(BaseModel):
+    page_number: int
+    count: int
+    total_pages: int
+
+
 class Genre(BaseModel):
     id: UUID
     name: str
 
 
-class GenreList(BaseModel):
-    __root__: List[Genre]
+class PaginatedGenreList(PaginatedList):
+    result: List[Genre]
 
 
 class PersonShort(BaseModel):
@@ -30,8 +36,8 @@ class Person(PersonShort):
     director: List[UUID]
 
 
-class PersonShortList(BaseModel):
-    __root__: List[PersonShort]
+class PaginatedPersonShortList(PaginatedList):
+    result: List[PersonShort]
 
 
 class PersonList(BaseModel):
@@ -54,3 +60,7 @@ class Film(FilmShort):
 
 class FilmShortList(BaseModel):
     __root__: List[FilmShort]
+
+
+class PaginatedFilmShortList(PaginatedList):
+    result: List[FilmShort]

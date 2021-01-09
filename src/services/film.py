@@ -1,6 +1,6 @@
 import re
 from functools import lru_cache
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from uuid import UUID
 from enum import Enum
 from collections import OrderedDict
@@ -155,14 +155,14 @@ class FilmService:
                    page_number: int,
                    page_size: int,
                    sort_by: Optional[SortBy] = None,
-                   filter_by: Optional[FilterBy] = None,) -> List[Film]:
+                   filter_by: Optional[FilterBy] = None,) -> Tuple[int, List[Film]]:
         """
-        Возвращает все фильмы.
+        Возвращает общее количество фильмов и список фильмов с учётом сортировки и фильтрации.
         """
         # получаем только ID фильмов
         limit = page_size
         offset = page_size * (page_number - 1)
-        film_ids = await self._es_get_all(offset, limit, sort_by, filter_by)
+        films_total, film_ids = await self._es_get_all(offset, limit, sort_by, filter_by)
         # OrderedDict позволяет сохранить исходный порядок сортировки
         films = OrderedDict.fromkeys(film_ids, None)
 
@@ -181,7 +181,7 @@ class FilmService:
                 film = Film(**doc)
                 await self.cache.put(film.id, film.json())
                 films[film.id] = film
-        return list(films.values())
+        return (films_total, list(films.values()))
 
     async def get_by_person_id(self, person_id: UUID) -> Dict[Roles, List[Film]]:
         """
@@ -227,11 +227,16 @@ class FilmService:
                           offset: int,
                           limit: int,
                           sort_by: Optional[SortBy] = None,
-                          filter_by: Optional[FilterBy] = None) -> List[UUID]:
+                          filter_by: Optional[FilterBy] = None) -> Tuple[int, List[UUID]]:
         """
-        Возвращает список id фильмов из elasticsearch с учётом сортировки и фильтрации
+        Возвращает общее кол-во фильмов и список id фильмов из elasticsearch
+        с учётом сортировки и фильтрации.
         """
-        params = {"_source": False, "size": limit, "from": offset}
+        params = {
+            '_source': False,
+            'size': limit,
+            'from': offset
+        }
         if sort_by:
             params.update({'sort': f'{sort_by.attr}:{sort_by.order.value}'})
         body = None
@@ -239,7 +244,8 @@ class FilmService:
             body = _build_filter_query(filter_by)
         docs = await self.elastic.search(index=FILMS_INDEX, params=params, body=body)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
-        return ids
+        total = docs['hits']['total']['value']
+        return (total, ids)
 
     async def _es_get_by_person(self, person_id: UUID) -> Dict[Roles, List[UUID]]:
         """

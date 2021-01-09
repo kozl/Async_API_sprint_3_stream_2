@@ -1,6 +1,6 @@
 from enum import Enum
 from uuid import UUID
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from functools import lru_cache
 from collections import OrderedDict
 
@@ -12,7 +12,6 @@ from db.elastic import get_elastic
 from db.redis import get_redis
 from cache.redis import RedisCache
 from models.person import Person
-from core import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -33,15 +32,15 @@ def persons_keybuilder(person_id: UUID) -> str:
 def _build_person_serch_query(name: UUID) -> List:
 
     query = {
-            'query': {
-                'match': {
-                    'name': {
-                        'query': name,
-                        'fuzziness': 'auto'
-                    }
+        'query': {
+            'match': {
+                'name': {
+                    'query': name,
+                    'fuzziness': 'auto'
                 }
             }
-            }
+        }
+    }
 
     return query
 
@@ -54,15 +53,16 @@ class PersonService:
 
     async def list(self,
                    page_number: int,
-                   page_size: int) -> List[Person]:
+                   page_size: int) -> Tuple[int, List[Person]]:
         """
         Возвращает все персоны
         """
         # получаем только ID персон
         limit = page_size
         offset = page_size * (page_number - 1)
-        person_ids = await self._es_get_all(offset, limit)
-        return await self.get_by_ids(person_ids)
+        persons_total, person_ids = await self._es_get_all(offset, limit)
+        persons = await self.get_by_ids(person_ids)
+        return (persons_total, persons)
 
     async def get_by_id(self, person_id: UUID) -> List[Person]:
 
@@ -129,14 +129,20 @@ class PersonService:
 
     async def _es_get_all(self,
                           offset: int,
-                          limit: int) -> List[UUID]:
+                          limit: int) -> Tuple[int, List[UUID]]:
         """
         Возвращает список id персон из elasticsearch с учётом сортировки и фильтрации
         """
-        params = {"_source": False, "size": limit, "from": offset, "sort": "id"}
+        params = {
+            "_source": False,
+            "size": limit,
+            "from": offset,
+            "sort": "id"
+        }
         docs = await self.elastic.search(index=PERSONS_INDEX, params=params)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
-        return ids
+        total = docs['hits']['total']['value']
+        return (total, ids)
 
 
 @ lru_cache()

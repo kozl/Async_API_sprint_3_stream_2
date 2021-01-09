@@ -7,13 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from services.person import PersonService, get_person_service
 from services.film import FilmService, Roles, get_film_service
 from api.v1.common import pagination
-from api.v1.models import PersonList, Person, PersonShortList, PersonShort, FilmShortList, FilmShort
+from api.v1.models import PersonList, Person, PaginatedPersonShortList, PersonShort, FilmShortList, FilmShort
 from cache.redis import cache_response
 
-from core import settings
-import logging
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -54,10 +51,11 @@ async def person_films(person_id: UUID,
     for films in person_films_by_role.values():
         person_films.extend(films)
 
-    response = FilmShortList(__root__=[
-        FilmShort(id=film.id,
-                  title=film.title,
-                  imdb_rating=film.imdb_rating) for film in person_films])
+    response = FilmShortList(
+        result=[
+            FilmShort(id=film.id,
+                      title=film.title,
+                      imdb_rating=film.imdb_rating) for film in person_films])
     return response
 
 
@@ -65,11 +63,11 @@ async def person_films(person_id: UUID,
 @cache_response(ttl=60 * 5, query_args=['query'])
 async def persons_search(request: Request,
                          query: str,
-                         person_service: PersonService = Depends(get_person_service),
+                         person_service: PersonService = Depends(
+                             get_person_service),
                          film_service: FilmService = Depends(get_film_service)) -> List[Person]:
     response_person_models = []
     persons = await person_service.search(query)
-    logger.debug('/search/: %s', persons)
     if not persons:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
                             detail='persons not found')
@@ -78,21 +76,20 @@ async def persons_search(request: Request,
 
         person_films = await film_service.get_by_person_id(person.id)
         response_person_models.append(
-           Person(id=person.id,
-                  name=person.name,
-                  actor=[
-                      film.id for film in person_films[Roles.ACTOR.value]],
-                  writer=[
-                      film.id for film in person_films[Roles.WRITER.value]],
-                  director=[
-                      film.id for film in person_films[Roles.DIRECTOR.value]],
-                  ))
-    logger.debug('response_person_models: %s', response_person_models)
+            Person(id=person.id,
+                   name=person.name,
+                   actor=[
+                       film.id for film in person_films[Roles.ACTOR.value]],
+                   writer=[
+                       film.id for film in person_films[Roles.WRITER.value]],
+                   director=[
+                       film.id for film in person_films[Roles.DIRECTOR.value]],
+                   ))
     response = PersonList(__root__=response_person_models)
     return response
 
 
-@router.get('/', response_model=PersonShortList)
+@router.get('/', response_model=PaginatedPersonShortList)
 @cache_response(ttl=60 * 5, query_args=['sort'])
 async def persons(request: Request,
                   person_service: PersonService = Depends(get_person_service),
@@ -100,12 +97,17 @@ async def persons(request: Request,
     page_number = pagination['pagenumber']
     page_size = pagination['pagesize']
 
-    persons = await person_service.list(page_number, page_size)
+    persons_total, persons = await person_service.list(page_number, page_size)
     if not persons:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
                             detail='persons not found')
 
-    response = PersonShortList(__root__=[
-        PersonShort(id=person.id,
-                    name=person.name) for person in persons])
+    response = PaginatedPersonShortList(
+        page_number=page_number,
+        count=len(persons),
+        total_pages=(persons_total // page_size) + 1,
+        result=[
+            PersonShort(id=person.id,
+                        name=person.name) for person in persons]
+    )
     return response
