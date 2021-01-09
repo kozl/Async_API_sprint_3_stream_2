@@ -16,7 +16,7 @@ from core import settings
 import logging
 
 logger = logging.getLogger(__name__)
-
+logger.setLevel('DEBUG')
 
 PERSONS_INDEX = 'persons'
 
@@ -55,34 +55,21 @@ class PersonService:
 
     async def list(self,
                    page_number: int,
-                   page_size: int) -> List[Person]:
+                   page_size: int,
+                   person_ids: List[UUID] = None) -> List[Person]:
         """
         Возвращает все персоны
         """
         # получаем только ID персон
         limit = page_size
         offset = page_size * (page_number - 1)
-        person_ids = await self._es_get_all(offset, limit)
-        persons = OrderedDict.fromkeys(person_ids, None)
+        logger.debug('before person_ids: %s', person_ids)
+        if not person_ids:
+            person_ids = await self._es_get_all(offset, limit)
+        logger.debug('after person_ids: %s', person_ids)
+        return await self.get_by_ids(person_ids)
 
-        # проверяем есть ли полученные персоны в кеше по их ID
-        for person_id in persons.keys():
-            data = await self.cache.get(person_id)
-            if data:
-                persons[person_id] = Person.parse_raw(data)
-
-        # не найденные в кеше персоны запрашиваем в эластике и кладём в кеш
-        not_found = [person_id for person_id in persons.keys()
-                     if persons[person_id] is None]
-        if not_found:
-            docs = await self._es_get_by_ids(not_found)
-            for doc in docs:
-                person = Person(**doc)
-                await self.cache.put(person.id, person.json())
-                persons[person.id] = person
-        return list(persons.values())
-
-    async def get_by_id(self, person_id: UUID) -> Optional[Person]:
+    async def get_by_id(self, person_id: UUID) -> List[Person]:
 
         """
         Возвращает объект персоны. Он опционален, так как
@@ -100,22 +87,38 @@ class PersonService:
         await self.cache.put(person.id, person.json())
         return person
 
-    async def get_by_name(self, name: str) -> Optional[List[Person]]:
-        persons_result = []
-        person_ids = await self._es_search_by_word(name)
+    async def get_by_ids(self, person_ids: List[UUID]) -> Optional[List[Person]]:
+        persons = OrderedDict.fromkeys(person_ids, None)
+
+        # проверяем есть ли полученные жанры в кеше по их ID
+        for person_id in persons.keys():
+            data = await self.cache.get(person_id)
+            if data:
+                persons[person_id] = Person.parse_raw(data)
+
+        # не найденные в кеше персоны запрашиваем в эластике и кладём в кеш
+        not_found = [person_id for person_id in persons.keys()
+                     if persons[person_id] is None]
+        if not_found:
+            docs = await self._es_get_by_ids(not_found)
+            for doc in docs:
+                person = Person(**doc)
+                await self.cache.put(person.id, person.json())
+                persons[person.id] = person
+        return list(persons.values())
+
+    async def search(self, query: str) -> Optional[List[Person]]:
+
+        person_ids = await self._es_search_by_query(query)
         logger.debug('person_ids: %s', person_ids)
         if not person_ids:
             return None
 
-        docs = await self._es_get_by_ids(person_ids)
-        for doc in docs:
-            persons_result.append(await self.get_by_id(doc['id']))
+        return await self.get_by_ids(person_ids)
 
-        return persons_result
-
-    async def _es_search_by_word(self, name: str) -> List[dict]:
+    async def _es_search_by_query(self, query: str) -> List[dict]:
         params = {"_source": False}
-        body = _build_person_serch_query(name)
+        body = _build_person_serch_query(query)
         docs = await self.elastic.search(index=PERSONS_INDEX, body=body, params=params)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
         return ids
@@ -135,7 +138,7 @@ class PersonService:
         """
         Возвращает список id персон из elasticsearch с учётом сортировки и фильтрации
         """
-        params = {"_source": False, "size": limit, "from": offset}
+        params = {"_source": False, "size": limit, "from": offset, "sort": "id"}
         docs = await self.elastic.search(index=PERSONS_INDEX, params=params)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
         return ids

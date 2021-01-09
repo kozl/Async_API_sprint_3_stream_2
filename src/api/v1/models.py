@@ -30,11 +30,11 @@ class Person(PersonShort):
     director: List[UUID]
 
 
-class PersonList(BaseModel):
+class PersonShortList(BaseModel):
     __root__: List[PersonShort]
 
 
-class PersonListFull(BaseModel):
+class PersonList(BaseModel):
     __root__: List[Person]
 
 

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from services.person import PersonService, get_person_service
 from services.film import FilmService, Roles, get_film_service
 from api.v1.common import pagination
-from api.v1.models import Person, PersonList, PersonShort, FilmShortList, FilmShort, PersonListFull
+from api.v1.models import PersonList, Person, PersonShortList, PersonShort, FilmShortList, FilmShort
 from cache.redis import cache_response
 
 from core import settings
@@ -61,14 +61,14 @@ async def person_films(person_id: UUID,
     return response
 
 
-@router.get('/search/', response_model=PersonListFull)
-@cache_response(ttl=60 * 5, query_args=['search'])
+@router.get('/search/', response_model=PersonList)
+@cache_response(ttl=60 * 5, query_args=['query'])
 async def persons_search(request: Request,
                          query: str,
                          person_service: PersonService = Depends(get_person_service),
                          film_service: FilmService = Depends(get_film_service)) -> List[Person]:
     response_person_models = []
-    persons = await person_service.get_by_name(query)
+    persons = await person_service.search(query)
     logger.debug('/search/: %s', persons)
     if not persons:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
@@ -88,11 +88,11 @@ async def persons_search(request: Request,
                       film.id for film in person_films[Roles.DIRECTOR.value]],
                   ))
     logger.debug('response_person_models: %s', response_person_models)
-    response = PersonListFull(__root__=response_person_models)
+    response = PersonList(__root__=response_person_models)
     return response
 
 
-@router.get('/', response_model=PersonList)
+@router.get('/', response_model=PersonShortList)
 @cache_response(ttl=60 * 5, query_args=['sort'])
 async def persons(request: Request,
                   person_service: PersonService = Depends(get_person_service),
@@ -105,7 +105,7 @@ async def persons(request: Request,
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
                             detail='persons not found')
 
-    response = PersonList(__root__=[
+    response = PersonShortList(__root__=[
         PersonShort(id=person.id,
                     name=person.name) for person in persons])
     return response
