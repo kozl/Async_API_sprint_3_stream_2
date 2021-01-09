@@ -30,8 +30,12 @@ class Person(PersonShort):
     director: List[UUID]
 
 
-class PersonList(BaseModel):
+class PersonShortList(BaseModel):
     __root__: List[PersonShort]
+
+
+class PersonList(BaseModel):
+    __root__: List[Person]
 
 
 class FilmShort(BaseModel):
