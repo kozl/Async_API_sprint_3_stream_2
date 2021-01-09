@@ -16,7 +16,6 @@ from core import settings
 import logging
 
 logger = logging.getLogger(__name__)
-logger.setLevel('DEBUG')
 
 PERSONS_INDEX = 'persons'
 
@@ -55,18 +54,14 @@ class PersonService:
 
     async def list(self,
                    page_number: int,
-                   page_size: int,
-                   person_ids: List[UUID] = None) -> List[Person]:
+                   page_size: int) -> List[Person]:
         """
         Возвращает все персоны
         """
         # получаем только ID персон
         limit = page_size
         offset = page_size * (page_number - 1)
-        logger.debug('before person_ids: %s', person_ids)
-        if not person_ids:
-            person_ids = await self._es_get_all(offset, limit)
-        logger.debug('after person_ids: %s', person_ids)
+        person_ids = await self._es_get_all(offset, limit)
         return await self.get_by_ids(person_ids)
 
     async def get_by_id(self, person_id: UUID) -> List[Person]:
