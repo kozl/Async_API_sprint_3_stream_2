@@ -12,6 +12,11 @@ from db.elastic import get_elastic
 from db.redis import get_redis
 from cache.redis import RedisCache
 from models.person import Person
+from core import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 PERSONS_INDEX = 'persons'
 
@@ -24,6 +29,22 @@ class Roles(Enum):
 
 def persons_keybuilder(person_id: UUID) -> str:
     return f'person:{str(person_id)}'
+
+
+def _build_person_serch_query(name: UUID) -> List:
+
+    query = {
+            'query': {
+                'match': {
+                    'name': {
+                        'query': name,
+                        'fuzziness': 'auto'
+                    }
+                }
+            }
+            }
+
+    return query
 
 
 class PersonService:
@@ -78,6 +99,26 @@ class PersonService:
         person = Person(**docs[0])
         await self.cache.put(person.id, person.json())
         return person
+
+    async def get_by_name(self, name: str) -> Optional[List[Person]]:
+        persons_result = []
+        person_ids = await self._es_search_by_word(name)
+        logger.debug('person_ids: %s', person_ids)
+        if not person_ids:
+            return None
+
+        docs = await self._es_get_by_ids(person_ids)
+        for doc in docs:
+            persons_result.append(await self.get_by_id(doc['id']))
+
+        return persons_result
+
+    async def _es_search_by_word(self, name: str) -> List[dict]:
+        params = {"_source": False}
+        body = _build_person_serch_query(name)
+        docs = await self.elastic.search(index=PERSONS_INDEX, body=body, params=params)
+        ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
+        return ids
 
     async def _es_get_by_ids(self, person_ids: List[UUID]) -> List[dict]:
         """

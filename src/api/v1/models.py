@@ -34,6 +34,10 @@ class PersonList(BaseModel):
     __root__: List[PersonShort]
 
 
+class PersonListFull(BaseModel):
+    __root__: List[Person]
+
+
 class FilmShort(BaseModel):
     id: UUID
     title: str

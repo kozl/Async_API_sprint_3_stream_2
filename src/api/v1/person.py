@@ -7,9 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from services.person import PersonService, get_person_service
 from services.film import FilmService, Roles, get_film_service
 from api.v1.common import pagination
-from api.v1.models import Person, PersonList, PersonShort, FilmShortList, FilmShort
+from api.v1.models import Person, PersonList, PersonShort, FilmShortList, FilmShort, PersonListFull
 from cache.redis import cache_response
 
+from core import settings
+import logging
+
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -54,6 +58,37 @@ async def person_films(person_id: UUID,
         FilmShort(id=film.id,
                   title=film.title,
                   imdb_rating=film.imdb_rating) for film in person_films])
+    return response
+
+
+@router.get('/search/', response_model=PersonListFull)
+@cache_response(ttl=60 * 5, query_args=['search'])
+async def persons_search(request: Request,
+                         query: str,
+                         person_service: PersonService = Depends(get_person_service),
+                         film_service: FilmService = Depends(get_film_service)) -> List[Person]:
+    response_person_models = []
+    persons = await person_service.get_by_name(query)
+    logger.debug('/search/: %s', persons)
+    if not persons:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+                            detail='persons not found')
+
+    for person in persons:
+
+        person_films = await film_service.get_by_person_id(person.id)
+        response_person_models.append(
+           Person(id=person.id,
+                  name=person.name,
+                  actor=[
+                      film.id for film in person_films[Roles.ACTOR.value]],
+                  writer=[
+                      film.id for film in person_films[Roles.WRITER.value]],
+                  director=[
+                      film.id for film in person_films[Roles.DIRECTOR.value]],
+                  ))
+    logger.debug('response_person_models: %s', response_person_models)
+    response = PersonListFull(__root__=response_person_models)
     return response
 
 
