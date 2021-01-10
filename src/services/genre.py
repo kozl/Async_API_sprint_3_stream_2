@@ -1,6 +1,6 @@
 from functools import lru_cache
 from uuid import UUID
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from collections import OrderedDict
 
 from aioredis import Redis
@@ -42,14 +42,14 @@ class GenreService:
 
     async def list(self,
                    page_number: int,
-                   page_size: int) -> List[Genre]:
+                   page_size: int) -> Tuple[int, List[Genre]]:
         """
         Возвращает все жанры
         """
         # получаем только ID жанров
         limit = page_size
         offset = page_size * (page_number - 1)
-        genre_ids = await self._es_get_all(offset, limit)
+        genres_total, genre_ids = await self._es_get_all(offset, limit)
         genres = OrderedDict.fromkeys(genre_ids, None)
 
         # проверяем есть ли полученные жанры в кеше по их ID
@@ -67,7 +67,7 @@ class GenreService:
                 genre = Genre(**doc)
                 await self.cache.put(genre.id, genre.json())
                 genres[genre.id] = genre
-        return list(genres.values())
+        return (genres_total, list(genres.values()))
 
     async def _es_get_by_ids(self, genre_ids: List[UUID]) -> List[dict]:
         """
@@ -80,14 +80,20 @@ class GenreService:
 
     async def _es_get_all(self,
                           offset: int,
-                          limit: int) -> List[UUID]:
+                          limit: int) -> Tuple[int, List[UUID]]:
         """
         Возвращает список id фильмов из elasticsearch с учётом сортировки и фильтрации
         """
-        params = {"_source": False, "size": limit, "from": offset}
+        params = {
+            "_source": False,
+            "size": limit,
+            "from": offset,
+            "sort": "id"
+        }
         docs = await self.elastic.search(index=GENRES_INDEX, params=params)
         ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
-        return ids
+        total = docs['hits']['total']['value']
+        return (total, ids)
 
 
 @lru_cache()
