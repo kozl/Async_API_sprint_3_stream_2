@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from services.film import FilmService, get_film_service, SortBy, FilterBy
-from api.v1.models import FilmShort, Film, PaginatedFilmShortList
+from api.v1.models import FilmShort, Film, PaginatedFilmShortList, FilmShortList
 from cache.redis import cache_response
 from api.v1.common import pagination
 
@@ -55,5 +55,25 @@ async def films(request: Request,
             FilmShort(id=film.id,
                       title=film.title,
                       imdb_rating=film.imdb_rating) for film in films],
+    )
+    return response
+
+
+@router.get('/search/', response_model=FilmShortList)
+@cache_response(ttl=60 * 5, query_args=['query'])
+async def film_search(request: Request,
+                      query: str,
+                      film_service: FilmService = Depends(get_film_service)) -> List[FilmShort]:
+
+    films = await film_service.search(query)
+    if not films:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+                            detail='films not found')
+
+    response = FilmShortList(
+        __root__=[
+            FilmShort(id=film.id,
+                      title=film.title,
+                      imdb_rating=film.imdb_rating) for film in films]
     )
     return response

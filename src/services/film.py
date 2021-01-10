@@ -29,6 +29,8 @@ class Roles(Enum):
 
 SORT_FIELDS = ['imdb_rating', ]
 
+SEARCH_FIELDS = ['title', 'description', 'directors_names', 'actors_names', 'writers_names']
+
 
 class SortOrder(Enum):
     ASC = 'asc'
@@ -128,6 +130,20 @@ def _build_person_role_query(person_id: UUID) -> List:
     return result
 
 
+def _build_film_serch_query(query: str) -> List:
+
+    query = {
+        'query': {
+            'multi_match': {
+                'query': query,
+                'fields': SEARCH_FIELDS
+            }
+        }
+    }
+
+    return query
+
+
 class FilmService:
 
     def __init__(self, cache: RedisCache, elastic: AsyncElasticsearch):
@@ -213,6 +229,41 @@ class FilmService:
             films_by_role[role] = list(role_film_ids.values())
 
         return films_by_role
+
+    async def get_by_ids(self, film_ids: List[UUID]) -> Optional[List[Film]]:
+        films = OrderedDict.fromkeys(film_ids, None)
+
+        # проверяем есть ли полученные жанры в кеше по их ID
+        for film_id in films.keys():
+            data = await self.cache.get(film_id)
+            if data:
+                films[film_id] = Film.parse_raw(data)
+
+        # не найденные в кеше персоны запрашиваем в эластике и кладём в кеш
+        not_found = [film_id for film_id in films.keys()
+                     if films[film_id] is None]
+        if not_found:
+            docs = await self._es_get_by_ids(not_found)
+            for doc in docs:
+                film = Film(**doc)
+                await self.cache.put(film.id, film.json())
+                films[film.id] = film
+        return list(films.values())
+
+    async def search(self, query: str) -> Optional[List[Film]]:
+
+        person_ids = await self._es_search_by_query(query)
+        if not person_ids:
+            return None
+
+        return await self.get_by_ids(person_ids)
+
+    async def _es_search_by_query(self, query: str) -> List[dict]:
+        params = {"_source": False}
+        body = _build_film_serch_query(query)
+        docs = await self.elastic.search(index=FILMS_INDEX, body=body, params=params)
+        ids = [UUID(doc['_id']) for doc in docs['hits']['hits']]
+        return ids
 
     async def _es_get_by_ids(self, film_ids: List[UUID]) -> List[dict]:
         """
