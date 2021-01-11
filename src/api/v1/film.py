@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from services.film import FilmService, get_film_service, SortBy, FilterBy
-from api.v1.models import FilmShort, Film, PaginatedFilmShortList, FilmShortList
+from api.v1.models import FilmShort, Film, PaginatedFilmShortList, FilmShortList, Genre, Actor, Writer, Director
 from cache.redis import cache_response
 from api.v1.common import pagination
 
@@ -23,10 +23,10 @@ async def film_details(film_id: UUID, film_service: FilmService = Depends(get_fi
                 title=film.title,
                 description=film.description,
                 imdb_rating=film.imdb_rating,
-                genres=film.genres,
-                actors=film.actors,
-                writers=film.writers,
-                directors=film.directors,
+                genres=[Genre(**genre.dict()) for genre in film.genres],
+                actors=[Actor(**actor.dict()) for actor in film.actors],
+                writers=[Writer(**writer.dict()) for writer in film.writers],
+                directors=[Director(**director.dict()) for director in film.directors],
                 )
 
 
@@ -37,8 +37,8 @@ async def films(request: Request,
                 sort: Optional[str] = Query(
                     None, description='Сортировка по аттрибуту фильма', regex='^[-+].+$'),
                 pagination: dict = Depends(pagination)) -> List[FilmShort]:
-    sort_by = SortBy.from_param(sort)
-    filter_by = FilterBy.from_query(request.query_params)
+    sort_by = SortBy.from_query(sort)
+    filter_by = FilterBy.from_query_params(request.query_params)
     page_number = pagination['pagenumber']
     page_size = pagination['pagesize']
 

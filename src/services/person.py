@@ -12,9 +12,6 @@ from db.elastic import get_elastic
 from db.redis import get_redis
 from cache.redis import RedisCache
 from models.person import Person
-import logging
-
-logger = logging.getLogger(__name__)
 
 PERSONS_INDEX = 'persons'
 
@@ -83,6 +80,9 @@ class PersonService:
         return person
 
     async def get_by_ids(self, person_ids: List[UUID]) -> Optional[List[Person]]:
+        """
+        Возвращает персоны по списку id.
+        """
         persons = OrderedDict.fromkeys(person_ids, None)
 
         # проверяем есть ли полученные жанры в кеше по их ID
@@ -103,15 +103,19 @@ class PersonService:
         return list(persons.values())
 
     async def search(self, query: str) -> Optional[List[Person]]:
-
+        """
+        Поиск по персонам.
+        """
         person_ids = await self._es_search_by_query(query)
-        logger.debug('person_ids: %s', person_ids)
         if not person_ids:
             return None
 
         return await self.get_by_ids(person_ids)
 
     async def _es_search_by_query(self, query: str) -> List[dict]:
+        """
+        Отправляет поисковый запрос в эластик и возвращает полученные персоны.
+        """
         params = {"_source": False}
         body = _build_person_serch_query(query)
         docs = await self.elastic.search(index=PERSONS_INDEX, body=body, params=params)

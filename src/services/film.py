@@ -29,7 +29,8 @@ class Roles(Enum):
 
 SORT_FIELDS = ['imdb_rating', ]
 
-SEARCH_FIELDS = ['title', 'description', 'directors_names', 'actors_names', 'writers_names']
+SEARCH_FIELDS = ['title', 'description',
+                 'directors_names', 'actors_names', 'writers_names']
 
 
 class SortOrder(Enum):
@@ -49,7 +50,7 @@ class SortBy(BaseModel):
     order: SortOrder
 
     @classmethod
-    def from_param(cls, param: Optional[str]):
+    def from_query(cls, param: Optional[str]):
         """
         Парсит параметр, переданный в query и возвращает SortBy.
         По-умолчанию сортирует по рейтингу в порядке убывания.
@@ -70,7 +71,7 @@ class FilterBy(BaseModel):
     value: str
 
     @classmethod
-    def from_query(cls, query: QueryParams):
+    def from_query_params(cls, query: QueryParams):
         """
         Парсит набор query параметров и возвращает FilterBy либо None.
         """
@@ -231,6 +232,9 @@ class FilmService:
         return films_by_role
 
     async def get_by_ids(self, film_ids: List[UUID]) -> Optional[List[Film]]:
+        """
+        Возвращает фильмы по списку id.
+        """
         films = OrderedDict.fromkeys(film_ids, None)
 
         # проверяем есть ли полученные жанры в кеше по их ID
@@ -251,7 +255,9 @@ class FilmService:
         return list(films.values())
 
     async def search(self, query: str) -> Optional[List[Film]]:
-
+        """
+        Поиск по фильмам.
+        """
         person_ids = await self._es_search_by_query(query)
         if not person_ids:
             return None
@@ -259,6 +265,9 @@ class FilmService:
         return await self.get_by_ids(person_ids)
 
     async def _es_search_by_query(self, query: str) -> List[dict]:
+        """
+        Отправляет поисковый запрос в эластик и возвращает полученные фильмы
+        """
         params = {"_source": False}
         body = _build_film_serch_query(query)
         docs = await self.elastic.search(index=FILMS_INDEX, body=body, params=params)
