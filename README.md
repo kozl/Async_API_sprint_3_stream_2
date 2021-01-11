@@ -11,7 +11,7 @@ docker-compose up -d --build -f docker-compose.yaml -f docker-compose-backend.ya
 2. Создаём схему схемы для индексов *movies*, *genres* и *persons*
 
 ```bash
-./docker/es/es_schema_movies.txt
+./docker/es/create_es_schemas.sh
 ```
 
 Приложение будет доступно на http://localhost:8888/
