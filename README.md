@@ -5,7 +5,7 @@
 1. Поднимаем elasticsearch, redis и приложение
 
 ```bash
-docker-compose up -d --build -f docker-compose.yaml -f docker-compose-backend.yaml
+docker-compose -f docker-compose.yaml -f docker-compose-backend.yaml up -d --build
 ```
 
 2. Создаём схему схемы для индексов *movies*, *genres* и *persons*
@@ -15,6 +15,7 @@ docker-compose up -d --build -f docker-compose.yaml -f docker-compose-backend.ya
 ```
 
 Приложение будет доступно на http://localhost:8888/
+OpenAPI схема: http://localhost:8888/api/openapi
 
 
 ## Техническое задание

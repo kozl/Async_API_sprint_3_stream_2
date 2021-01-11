@@ -2,12 +2,10 @@ from typing import List, Optional
 from uuid import UUID
 
 import orjson
+from pydantic import BaseModel
 
 from models.genre import Genre
 from models.person import Actor, Writer, Director
-
-# Используем pydantic для упрощения работы при перегонке данных из json в объекты
-from pydantic import BaseModel
 
 
 def orjson_dumps(v, *, default):

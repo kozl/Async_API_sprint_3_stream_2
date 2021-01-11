@@ -13,7 +13,7 @@ DEFAULT_TTL = 60
 
 def default_response_keybuilder(func, query_args, *args, **kwargs) -> str:
     """
-    Формирует ключ для хранения данных в кеше.
+    Формирует ключ для хранения ответа на запрос в кеше.
     Если среди параметров функции есть объект Response, использует
     query_args для формирования ключа (для функций, которые используют
     Response для получения параметров запроса)
@@ -57,7 +57,7 @@ def cache_response(
 class RedisCache:
     """
     Redis-кеш для объектов. Ничего не знает об их структуре,
-    просто сохраняет и возвращает дикты в редисе.
+    просто сохраняет и возвращает стороки из редиса.
     """
 
     def __init__(self, redis: Redis, keybuilder: Callable[[UUID], str], ttl: int = DEFAULT_TTL):

@@ -11,4 +11,7 @@ async def pagination(pagesize: Optional[int] = Query(DEFAULT_PAGE_SIZE,
                      pagenumber: Optional[int] = Query(1,
                                                        alias='page[number]',
                                                        title='Номер страницы')):
+    """
+    Добавляет пагинацию в метод API.
+    """
     return {'pagesize': pagesize, 'pagenumber': pagenumber}
