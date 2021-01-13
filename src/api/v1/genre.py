@@ -1,8 +1,8 @@
-from http import HTTPStatus
 from uuid import UUID
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import status
 
 from services.genre import GenreService, get_genre_service
 from api.v1.models import Genre, PaginatedGenreList
@@ -17,7 +17,7 @@ router = APIRouter()
 async def film_details(genre_id: UUID, genre_service: GenreService = Depends(get_genre_service)) -> Genre:
     genre = await genre_service.get_by_id(genre_id)
     if not genre:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='genre not found')
     return Genre(id=genre.id,
                  name=genre.name
@@ -34,7 +34,7 @@ async def films(request: Request,
 
     genres_total, genres = await genre_service.list(page_number, page_size)
     if not genres:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='genres not found')
 
     response = PaginatedGenreList(

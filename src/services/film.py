@@ -45,6 +45,14 @@ class FilterByAttr(Enum):
     WRITER = 'writer'
 
 
+FILTERBY_PATHS = {
+    FilterByAttr.GENRE.value: 'genres',
+    FilterByAttr.ACTOR.value: 'actors',
+    FilterByAttr.DIRECTOR.value: 'directors',
+    FilterByAttr.WRITER.value: 'writers',
+}
+
+
 class SortBy(BaseModel):
     attr: str
     order: SortOrder
@@ -91,15 +99,7 @@ def _build_filter_query(filter_by: FilterBy) -> Dict:
     """
     Формирует поисковый запрос для фильтрации по аттрибутам фильма
     """
-    path = 'actors'
-    if filter_by.attr == FilterByAttr.GENRE.value:
-        path = 'genres'
-    elif filter_by.attr == FilterByAttr.ACTOR.value:
-        path = 'actors'
-    elif filter_by.attr == FilterByAttr.DIRECTOR.value:
-        path = 'directors'
-    elif filter_by.attr == FilterByAttr.WRITER.value:
-        path = 'writers'
+    path = FILTERBY_PATHS.get(filter_by.attr, 'actors')
     return {
         'query': {
             'nested': {
