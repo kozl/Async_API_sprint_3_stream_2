@@ -1,8 +1,8 @@
-from http import HTTPStatus
 from uuid import UUID
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import status
 
 from services.film import FilmService, get_film_service, SortBy, FilterBy
 from api.v1.models import FilmShort, Film, PaginatedFilmShortList, FilmShortList
@@ -17,7 +17,7 @@ router = APIRouter()
 async def film_details(film_id: UUID, film_service: FilmService = Depends(get_film_service)) -> Film:
     film = await film_service.get_by_id(film_id)
     if not film:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='film not found')
     return Film(id=film.id,
                 title=film.title,
@@ -44,7 +44,7 @@ async def films(request: Request,
 
     films_total, films = await film_service.list(page_number, page_size, sort_by, filter_by)
     if not films:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='films not found')
 
     response = PaginatedFilmShortList(
@@ -67,7 +67,7 @@ async def film_search(request: Request,
 
     films = await film_service.search(query)
     if not films:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='films not found')
 
     response = FilmShortList(

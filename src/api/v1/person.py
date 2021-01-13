@@ -1,8 +1,8 @@
-from http import HTTPStatus
 from uuid import UUID
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import status
 
 from services.person import PersonService, get_person_service
 from services.film import FilmService, Roles, get_film_service
@@ -22,7 +22,7 @@ async def person_details(person_id: UUID,
                          film_service: FilmService = Depends(get_film_service)) -> Person:
     person = await person_service.get_by_id(person_id)
     if not person:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='person not found')
     person_films = await film_service.get_by_person_id(person.id)
     return Person(id=person.id,
@@ -44,7 +44,7 @@ async def person_films(person_id: UUID,
                        film_service: FilmService = Depends(get_film_service)) -> FilmShortList:
     person = await person_service.get_by_id(person_id)
     if not person:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='person not found')
     person_films_by_role = await film_service.get_by_person_id(person.id)
     person_films = []
@@ -69,7 +69,7 @@ async def persons_search(request: Request,
     response_person_models = []
     persons = await person_service.search(query)
     if not persons:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='persons not found')
 
     for person in persons:
@@ -99,7 +99,7 @@ async def persons(request: Request,
 
     persons_total, persons = await person_service.list(page_number, page_size)
     if not persons:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='persons not found')
 
     response = PaginatedPersonShortList(
